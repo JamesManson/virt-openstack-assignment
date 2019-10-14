@@ -8,48 +8,48 @@ def create():
     
     IMAGE = 'ubuntu-16.04-x86_64'#identifying resources needed 
     FLAVOUR = 'c1.c1r1'
-    NETWORK = 'private-net'
+    NETWORK = 'mansjc2-net'
     KEYPAIR = 'mansjc2-key'
     
     image = conn.compute.find_image(IMAGE)
-    flavor = conn.compute.find_flavor(FLAVOUR)
+    flavour = conn.compute.find_flavor(FLAVOUR)
     network = conn.network.find_network(NETWORK)
     keypair = conn.compute.find_keypair(KEYPAIR)
     
     print("Launching Instance 1:")#creating web server
-	SERVER = 'mansjc2-web'
+	Server1Name = 'mansjc2-web'
 	server = conn.compute.create_server(
-		name=SERVER, image_id=image.id, flavor_id=flavour.id,
+		name=Server1Name, image_id=image.id, flavor_id=flavour.id,
 		networks=[{"uuid": network.id}], key_name=keypair.name)
         
     server = conn.compute.wait_for_server(server)
     
     print("Launching Instance 2:")#creating app server
-	SERVER = 'mansjc2-app'
+	Server2Name = 'mansjc2-app'
 	server = conn.compute.create_server(
-		name=SERVER, image_id=image.id, flavor_id=flavour.id,
+		name=Server2Name, image_id=image.id, flavor_id=flavour.id,
 		networks=[{"uuid": network.id}], key_name=keypair.name)
         
     server = conn.compute.wait_for_server(server)
     
     print("Launching Instance 3:")#creating db server
-	SERVER = 'mansjc2-db'
+	Server3Name = 'mansjc2-db'
 	server = conn.compute.create_server(
-		name=SERVER, image_id=image.id, flavor_id=flavour.id,
+		name=Server3Name, image_id=image.id, flavor_id=flavour.id,
 		networks=[{"uuid": network.id}], key_name=keypair.name)
         
     server = conn.compute.wait_for_server(server)
         
     print("Creating Network:")#creating network and passing name
-	NAME = 'mansjc2-net'
+	NetworkName = 'mansjc2-net'
 	network = conn.network.create_network(
-		name=NAME)
+		name=NetworkName)
 	print(network)
 	
 	print("Creating Subnet:")#create subnet for the network 
-	NAME = 'mansjc2-subnet'
+	SubnetName = 'mansjc2-subnet'
 	subnet = conn.network.create_subnet(
-		name=NAME,
+		name=SubnetName,
 		network_id=NETWORK,
 		ip_version='4',
 		cidr='192.168.50.0/24',
@@ -57,9 +57,9 @@ def create():
 	print(subnet)
 	
 	print("Creating Router:")#creating router and associating subnet
-	NAME = 'mansjc2-rtr'
+	RouterName = 'mansjc2-rtr'
 	router = conn.router.create_router(
-		name=NAME, 
+		name=RouterName, 
 		router_subnet='mansjc2-subnet'
 		)
 	

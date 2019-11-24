@@ -1,152 +1,145 @@
 import argparse
-
+import time
 import openstack
 
-conn = openstack.connect()
+IMAGE = 'ubuntu-16.04-x86_64' #identifying resources needed 
+FLAVOUR = 'c1.c1r1'
+NETWORK = 'mansjc2-net'
+KEYPAIR = 'mansjc2-key'
+SUBNET = 'mansjc2-subnet'
+ROUTER = 'mansjc2-router'
+SECURITYGROUP = 'mansjc2-group'
+SERVER1 = 'mansjc2-web'
+SERVER2 = 'mansjc2-app'
+SERVER3 = 'mansjc2-db'
+
+conn = openstack.connect(cloud_name='openstack') #connect to openstack  
 
 def create():
     
-    IMAGE = 'ubuntu-16.04-x86_64'#identifying resources needed 
-    FLAVOUR = 'c1.c1r1'
-    NETWORK = 'mansjc2-net'
-    KEYPAIR = 'mansjc2-key'
-    
-    image = conn.compute.find_image(IMAGE)
+    image = conn.compute.find_image(IMAGE) 
     flavour = conn.compute.find_flavor(FLAVOUR)
     network = conn.network.find_network(NETWORK)
     keypair = conn.compute.find_keypair(KEYPAIR)
+    router = conn.network.find_router(ROUTER)
+    security_group = conn.network.find_security_group(SECURITYGROUP)
+    server_list = [SERVER1,SERVER2,SERVER3]
     
-    print("Launching Instance 1:")#creating web server
-	Server1Name = 'mansjc2-web'
-	server = conn.compute.create_server(
-		name=Server1Name, image_id=image.id, flavor_id=flavour.id,
-		networks=[{"uuid": network.id}], key_name=keypair.name)
+    if not network: #if there is no network found, create one
+        print("Creating network") 
+        network = conn.network.create_network(name=NETWORK)
+        print("Creating subnet") 
+        subnet = conn.network.create_subnet(
+            name=SUBNET,
+            network_id=network.id,
+            ip_version='4',
+            cidr='192.168.50.0/24'
+            gateway_ip='192.168.50.1')
+        print("Network has been created")
+    else:
+        print("Network aleady found") 
         
-    server = conn.compute.wait_for_server(server)
-    
-    print("Launching Instance 2:")#creating app server
-	Server2Name = 'mansjc2-app'
-	server = conn.compute.create_server(
-		name=Server2Name, image_id=image.id, flavor_id=flavour.id,
-		networks=[{"uuid": network.id}], key_name=keypair.name)
         
-    server = conn.compute.wait_for_server(server)
-    
-    print("Launching Instance 3:")#creating db server
-	Server3Name = 'mansjc2-db'
-	server = conn.compute.create_server(
-		name=Server3Name, image_id=image.id, flavor_id=flavour.id,
-		networks=[{"uuid": network.id}], key_name=keypair.name)
-        
-    server = conn.compute.wait_for_server(server)
-        
-    print("Creating Network:")#creating network and passing name
-	NetworkName = 'mansjc2-net'
-	network = conn.network.create_network(
-		name=NetworkName)
-	print(network)
-	
-	print("Creating Subnet:")#create subnet for the network 
-	SubnetName = 'mansjc2-subnet'
-	subnet = conn.network.create_subnet(
-		name=SubnetName,
-		network_id=NETWORK,
-		ip_version='4',
-		cidr='192.168.50.0/24',
-		gateway_ip='192.168.50.1')
-	print(subnet)
-	
-	print("Creating Router:")#creating router and associating subnet
-	RouterName = 'mansjc2-rtr'
-	router = conn.router.create_router(
-		name=RouterName, 
-		router_subnet='mansjc2-subnet'
-		)
-	
-	print("Associate Floating IP")
-	public_net = conn.network.find_network('public_net')#accessing public network and retrive ip address from it
-	floating_ip = conn.network.create_ip(floating_network_id=public_net.id)
-	conn.compute.add_floating_ip_to_server(server, floating_ip.floating_ip_address)#associating our floating ip address to with the server
-	
-    
-    
-	
-	
-	
-    pass
+    if not router: #if there is no router found, create one
+        print("Creating router")
+        attrs = {"name" : ROUTER, "external_gatewat_info" : {"network_id" : conn.network.find_network("public-net").id}}
+        router = conn.network.create_router(**attrs)
+        conn.network.add_interface_to_router(router, subnet_id=conn.network.find_network(NETWORK).subnet_ids[0])
+        print("Router has been created")
+    else:
+        print("Router already found") 
 
+    
+    for name in server_list:
+        server = conn.compute.find_server(name)
+        if not server: #if there is no server found, create one
+            print("Creating " + name + " server")
+            server = conn.compute.create_server(name=name, image_id=image.id, flavor_id=flavour.id, networks=[{"uuid": network.id}],
+            server = conn.compute.wait_for_server(server)
+            conn.compute.add_security_group_to_server(server, security_group)
+            if name is server_list[0]:
+                floatingIP = conn.network.create_ip(floating_network_id=conn.network.find_network('public-net').id)
+                conn.compute.add_floating_ip_to_server(server, address=floating_ip.floating_ip_address)
+            print("Server " + name + " has been created")
+        else:
+            print("Server already found")
 
 
 def run():
 
-    conn.compute.start_server('mansjc2-web')#starting servers
-	conn.compute.start_server('mansjc2-app')
-    conn.compute.start_server('mansjc2-db')
-    
-    pass
-
+    for name in server_list: #start server if not already active
+        server = conn.compute.find_server(name)
+        if not server:
+            print(name + " server was not found")
+        else:
+            server = conn.compute.get_server(server)
+            if server.status == "SHUTOFF":
+                conn.compute.start_server(server)
+                print(name + " is now active")
+            else: 
+                print(name + " is already active")
 
 
 def stop():
 
-    conn.compute.stop_server('mansjc2-web')#stopping servers
-    conn.compute.stop_server('mansjc2-app')
-    conn.compute.stop_server('mansjc2-db')
-
-    pass
-
+    for name in server_list: #stop servers if not already inactive
+        server = conn.compute.find_server(name)
+        if not server:
+            print(name + " server was not found")
+        else:
+            server = conn.compute.get_server(server)
+            if server.status == "ACTIVE":
+                conn.compute.stop_server(server)
+                print(name + " is now inactive")
+            else:
+                print(name + " is already inactive")
 
 
 def destroy():
 
-    print("Delete Network:")
+    router = conn.network.find_router(ROUTER) 
+    network = conn.network.find_network(NETWORK)
+    subnet = conn.network.find_subnet(SUBNET)
 
-    network = conn.network.find_network(
-        'mansjc2-net')#find network by name
-
-    for mansjc2-subnet in network.subnet_ids:
-        conn.network.delete_subnet(mansjc2-subnet, ignore_missing=False)#delete subnet for network
-		conn.network.delete_network(mansjc2-net, ignore_missing=False)#delete network
-
-    print("Delete Router:")
+    for name in server_list: #delete servers if exists.
+        server = conn.compute.find_server(name)
+        if not server:
+            print(name + " server was not found")
+        else:
+            conn.compute.delete_server(server)
+            print(name + " server has been deleted")
     
-    router = conn.compute.find_router(
-        'mansjc2-rtr')#find router by name
-        
-    for mansjc2-router in router.router_ids:
-        conn.compute.delete_router(mansjc2-router, ignore_missing=False)#delete router
-        
-    print("Delete Server:")
-
-    server = conn.compute.find_server(
-        'mansjc2-web')#find web server
-       
-    for mansjc2-web in server.server_ids:
-        conn.compute.delete_server(mansjc2-web, ignore_missing=False)#delete web server
-     
-    server = conn.compute.find_server(
-        'mansjc2-app')#find app server
-       
-    for mansjc2-app in server.server_ids:
-        conn.compute.delete_server(mansjc2-app, ignore_missing=False)#delete app server
+    time.sleep(10) #wait for servers to be deleted"
     
-    server = conn.compute.find_server(
-        'mansjc2-db')#find db server
-       
-    for mansjc2-db in server.server_ids:
-        conn.compute.delete_server(mansjc2-db, ignore_missing=False)#delete db server
+    if not router: #delete router if exists
+        print("Router does not exist")
+    else:
+        conn.network.delete_router(router)
+        print("Router has been deleted")
         
-    pass
-
-
+    if not subnet: #delete subnet if exists
+        print("Subnet does not exist")
+    else:
+        conn.network.delet_subnet(subnet)
+        print("Subnet has been deleted")
+      
+    if not network: #deleted network if exists
+        print("Network does not exist")
+    else:
+        conn.network.delet_network(network)
+        print("Network has been deleted")
+    
 
 def status():
-
-    conn.compute.get_server_metadata('mansjc2-web')#get metadata for web server
-    conn.compute.get_server_metadata('mansjc2-app')#get metadata for app server
-    conn.compute.get_server_metadata('mansjc2-db')#get metadata for db server
-
-    pass
+    
+    for name in server_list: #get status of each server
+        server = conn.compute.find_server(name)
+        if not server:
+            print(name + " server does not exist")
+        else:
+            server = conn.compute.get_server(server)
+            status = server.status
+            print(name + " currently " + server.status)
 
 
 
